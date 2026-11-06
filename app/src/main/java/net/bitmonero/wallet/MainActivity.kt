@@ -330,9 +330,24 @@ private fun FlowRowCandidates(candidates: List<String>, onPick: (String) -> Unit
 
 @Composable
 fun RestoreScreen(error: String?, onRestore: (seed: String, password: String, height: Long) -> Unit, onBack: () -> Unit) {
-    var password by remember { mutableStateOf(WalletSession.generateRandomPassword()) }
+    val password by remember { mutableStateOf(WalletSession.generateRandomPassword()) }
     var height by remember { mutableStateOf("0") }
-    var seedWords by remember { mutableStateOf<List<String>?>(null) }
+    var seedText by remember { mutableStateOf("") }
+    var wordByWord by remember { mutableStateOf(false) }
+    var pickedWords by remember { mutableStateOf<List<String>?>(null) }
+
+    // Pasted input is normalized: lowercased and split on ANY run of
+    // whitespace, so newlines, tabs, or double spaces from a paste all work.
+    val pastedWords = remember(seedText) {
+        seedText.trim().lowercase().split(Regex("\\s+")).filter { it.isNotBlank() }
+    }
+    val effectiveSeed: String? = if (wordByWord) pickedWords?.joinToString(" ")
+        else pastedWords.joinToString(" ").ifBlank { null }
+    val wordCount = if (wordByWord) (pickedWords?.size ?: 0) else pastedWords.size
+    // Monero mnemonics are 25 words (24 legacy without the checksum word, 13
+    // for some light wallets). Accept a tolerant range and let the native
+    // layer be the real validator rather than second-guessing it here.
+    val canRestore = effectiveSeed != null && wordCount in 12..26
 
     Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
         Text("Restore wallet", style = MaterialTheme.typography.titleLarge)
@@ -344,18 +359,43 @@ fun RestoreScreen(error: String?, onRestore: (seed: String, password: String, he
         OutlinedTextField(
             value = height, onValueChange = { height = it.filter(Char::isDigit) },
             modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
             label = { Text("Restore height (0 = from genesis)") }
         )
         Spacer(Modifier.height(16.dp))
-        SeedWordPicker(
-            totalWords = 25,
-            modifier = Modifier.weight(1f),
-            onComplete = { words -> seedWords = words }
-        )
+
+        if (!wordByWord) {
+            Text(
+                "Paste or type your whole seed phrase, with the words separated by spaces.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = seedText,
+                onValueChange = { seedText = it },
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                label = { Text("Seed phrase") },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    capitalization = KeyboardCapitalization.None,
+                    autoCorrect = false
+                )
+            )
+            Spacer(Modifier.height(4.dp))
+            Text("$wordCount words entered", style = MaterialTheme.typography.labelMedium)
+            TextButton(onClick = { wordByWord = true }) { Text("Enter word-by-word instead") }
+        } else {
+            SeedWordPicker(
+                totalWords = 25,
+                modifier = Modifier.weight(1f),
+                onComplete = { words -> pickedWords = words }
+            )
+            TextButton(onClick = { wordByWord = false }) { Text("Paste the whole phrase instead") }
+        }
+
         Spacer(Modifier.height(16.dp))
         Button(
-            onClick = { onRestore(seedWords!!.joinToString(" "), password, height.toLongOrNull() ?: 0L) },
-            enabled = seedWords != null,
+            onClick = { onRestore(effectiveSeed!!, password, height.toLongOrNull() ?: 0L) },
+            enabled = canRestore,
             modifier = Modifier.fillMaxWidth()
         ) { Text("Restore") }
         TextButton(onClick = onBack) { Text("Back") }

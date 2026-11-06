@@ -224,7 +224,7 @@ fun SettingsScreen(session: WalletSession, onBack: () -> Unit, onBackup: () -> U
         Text("Remote nodes", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(4.dp))
         Text(
-            "The wallet connects to whichever node is selected (used in Remote node mode). No third-party node is built in by default -- only your own (127.0.0.1) until you add one.",
+            "Used in Remote node mode: the wallet connects to whichever node is selected. A few public BitMonero nodes are listed to start with, but public nodes come and go -- if none connect, add your own node below (host:port).",
             style = MaterialTheme.typography.bodySmall
         )
         Spacer(Modifier.height(12.dp))
@@ -240,7 +240,16 @@ fun SettingsScreen(session: WalletSession, onBack: () -> Unit, onBackup: () -> U
                     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         RadioButton(
                             selected = node == activeNode,
-                            onClick = { NodeStore.setActive(context, node); refreshNodes() }
+                            onClick = {
+                                NodeStore.setActive(context, node)
+                                refreshNodes()
+                                // Reconnect immediately rather than only on the
+                                // next app launch -- "I picked a node and nothing
+                                // happened" was a real complaint.
+                                if (nodeMode == NodeMode.REMOTE) {
+                                    runCatching { NodeConnector.connect(context, session) }
+                                }
+                            }
                         )
                         Text(node)
                     }
@@ -279,7 +288,7 @@ fun SettingsScreen(session: WalletSession, onBack: () -> Unit, onBackup: () -> U
 
         Spacer(Modifier.height(16.dp))
         Text(
-            "Changing the active node applies the next time the wallet connects (e.g. after restarting the app).",
+            "Selecting a node reconnects the wallet right away. If it stays on \"Not connected\", that node is unreachable -- try another.",
             style = MaterialTheme.typography.bodySmall
         )
 

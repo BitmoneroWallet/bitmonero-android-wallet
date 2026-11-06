@@ -116,6 +116,16 @@ Java_net_bitmonero_wallet_NativeWallet_restoreFromSeed(JNIEnv* env, jobject,
     Wallet* w = wm->recoveryWallet(path, jstr(env, jpassword), jstr(env, jseed),
                                     Monero::NetworkType::MAINNET,
                                     static_cast<uint64_t>(restoreHeight));
+    // recoveryWallet returns a non-null Wallet even for an invalid/unparseable
+    // mnemonic (bad checksum, wrong word count, non-wordlist word); the
+    // failure shows up in status(), not the pointer. Without this check an
+    // invalid seed would surface to the user as the confusing "restored
+    // wallet's seed does not match" message from the Kotlin guard. Fail here
+    // instead, and don't leave a half-written wallet file on disk.
+    if (w->status() != Wallet::Status_Ok) {
+        wm->closeWallet(w, false);
+        return 0;
+    }
     return reinterpret_cast<jlong>(w);
 }
 

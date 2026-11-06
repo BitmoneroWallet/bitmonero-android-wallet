@@ -98,10 +98,24 @@ class WalletSession(private val context: Context) {
             return Result.failure(IllegalStateException("restore failed"))
         }
         // Guard against a mismatch between the supplied seed and what the
-        // wallet actually derived, the same class of bug as iXcoin's
-        // restore path -- verify before treating this as a live wallet.
-        val derivedSeed = NativeWallet.getSeed(ptr)
-        if (derivedSeed.trim() != seed.trim()) {
+        // wallet actually derived, the same class of bug as iXcoin's restore
+        // path -- verify before treating this as a live wallet. Compare on
+        // NORMALIZED word lists (lowercased, whitespace collapsed) rather than
+        // raw strings: the native seed() always returns the canonical 25-word
+        // form, and the user's input may differ only by casing, extra spaces,
+        // or the trailing checksum word. A purely textual `!=` false-rejected
+        // correct seeds, which read to the user as "the wallet won't take my
+        // seed phrase".
+        fun normalize(s: String) = s.trim().lowercase().split(Regex("\\s+")).filter { it.isNotBlank() }
+        val derivedWords = normalize(NativeWallet.getSeed(ptr))
+        val enteredWords = normalize(seed)
+        val n = minOf(derivedWords.size, enteredWords.size)
+        val entropyMatches = n > 0 && derivedWords.take(n) == enteredWords.take(n)
+        // Accept when the shared words all match and the lengths differ by at
+        // most one (the optional checksum word); reject anything else.
+        val seedConsistent = entropyMatches &&
+            kotlin.math.abs(derivedWords.size - enteredWords.size) <= 1
+        if (!seedConsistent) {
             NativeWallet.closeWallet(ptr)
             File(path).delete(); File("$path.keys").delete()
             return Result.failure(IllegalStateException("Restored wallet's seed does not match the seed entered -- refusing to use it"))
