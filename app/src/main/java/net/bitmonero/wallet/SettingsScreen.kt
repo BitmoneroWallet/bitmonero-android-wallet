@@ -2,8 +2,8 @@ package net.bitmonero.wallet
 
 import androidx.biometric.BiometricManager
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -50,7 +50,7 @@ fun SettingsScreen(session: WalletSession, onBack: () -> Unit, onBackup: () -> U
         activeNode = NodeStore.active(context)
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+    Column(modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp)) {
         Text("Settings", style = MaterialTheme.typography.headlineSmall)
         Spacer(Modifier.height(24.dp))
 
@@ -229,34 +229,37 @@ fun SettingsScreen(session: WalletSession, onBack: () -> Unit, onBackup: () -> U
         )
         Spacer(Modifier.height(12.dp))
 
-        LazyColumn(modifier = Modifier.weight(1f)) {
-            items(nodes.size) { i ->
-                val node = nodes[i]
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                        RadioButton(
-                            selected = node == activeNode,
-                            onClick = {
-                                NodeStore.setActive(context, node)
-                                refreshNodes()
-                                // Reconnect immediately rather than only on the
-                                // next app launch -- "I picked a node and nothing
-                                // happened" was a real complaint.
-                                if (nodeMode == NodeMode.REMOTE) {
-                                    runCatching { NodeConnector.connect(context, session) }
-                                }
+        // Plain Column (not LazyColumn): the whole screen is already in a
+        // verticalScroll, and nesting a lazy vertical list inside it throws
+        // "infinite height" constraints. The node list is short, so a simple
+        // forEach is correct here -- and keeps the Add-node field below it
+        // reachable (the old weight(1f) LazyColumn pushed it off-screen, which
+        // is why the screen "wouldn't scroll").
+        nodes.forEach { node ->
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    RadioButton(
+                        selected = node == activeNode,
+                        onClick = {
+                            NodeStore.setActive(context, node)
+                            refreshNodes()
+                            // Reconnect immediately rather than only on the
+                            // next app launch -- "I picked a node and nothing
+                            // happened" was a real complaint.
+                            if (nodeMode == NodeMode.REMOTE) {
+                                runCatching { NodeConnector.connect(context, session) }
                             }
-                        )
-                        Text(node)
-                    }
-                    if (nodes.size > 1) {
-                        TextButton(onClick = { NodeStore.remove(context, node); refreshNodes() }) {
-                            Text("Remove")
                         }
+                    )
+                    Text(node)
+                }
+                if (nodes.size > 1) {
+                    TextButton(onClick = { NodeStore.remove(context, node); refreshNodes() }) {
+                        Text("Remove")
                     }
                 }
             }
