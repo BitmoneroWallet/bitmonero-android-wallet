@@ -48,7 +48,7 @@ class MainActivity : FragmentActivity() {
                 ?: return Screen.Error("This wallet's password wasn't found on this device, so it can't be reopened. Restore it from its 25-word seed instead.")
             return session.open(WALLET_NAME, password).fold(
                 onSuccess = {
-                    session.connect(NodeStore.active(this), trusted = true)
+                    NodeConnector.connect(this, session)
                     Screen.Home
                 },
                 onFailure = { e -> Screen.Error(e.message ?: "failed to open wallet") }
@@ -109,7 +109,7 @@ class MainActivity : FragmentActivity() {
                                 session.confirmSeedRecordedAndPersist().fold(
                                     onSuccess = {
                                         WalletCredentialStore.savePassword(this@MainActivity, WALLET_NAME, pendingCreatePassword)
-                                        session.connect(NodeStore.active(this@MainActivity), trusted = true)
+                                        NodeConnector.connect(this@MainActivity, session)
                                         screen = Screen.Home
                                     },
                                     onFailure = { e -> screen = Screen.Error(e.message ?: "commit failed") }
@@ -128,7 +128,7 @@ class MainActivity : FragmentActivity() {
                                     result.fold(
                                         onSuccess = {
                                             WalletCredentialStore.savePassword(this@MainActivity, WALLET_NAME, password)
-                                            session.connect(NodeStore.active(this@MainActivity), trusted = true)
+                                            NodeConnector.connect(this@MainActivity, session)
                                             screen = Screen.Home
                                         },
                                         onFailure = { e -> screen = Screen.RestoreEntry(e.message) }

@@ -24,3 +24,5 @@ keystore.properties
 # Release artifacts (distributed via GitHub Releases)
 *.apk
 *.aab
+*.apk.sha256
+SHA256SUMS

@@ -22,10 +22,39 @@ import android.content.Context
  * not secret, unlike the wallet password/keys, which never go through
  * this class.
  */
+/**
+ * How the wallet reaches a daemon.
+ *
+ *  - [REMOTE]: connect to one of the user-managed remote nodes (the
+ *    original behaviour).
+ *  - [FULL_NODE]: run a full BitMonero node (monerod) on this device and
+ *    connect the wallet to it over loopback. This is the privacy-maximal
+ *    option -- no third party learns which outputs are yours -- at the cost
+ *    of bandwidth, storage and battery. Running the node requires the
+ *    optional native daemon library (libbitmonero_daemon_jni.so); when it
+ *    isn't bundled, [NodeConnector] falls back to simply pointing the wallet
+ *    at a local daemon address, and the UI makes the missing engine clear
+ *    (see [NativeDaemon.isAvailable]).
+ */
+enum class NodeMode { REMOTE, FULL_NODE }
+
 object NodeStore {
     private const val PREFS = "bitmonero_nodes"
     private const val KEY_NODES = "nodes"
     private const val KEY_ACTIVE = "active"
+    private const val KEY_MODE = "node_mode"
+    private const val KEY_LOCAL_PORT = "local_rpc_port"
+    private const val KEY_PRUNED = "local_pruned"
+
+    /** Loopback host the wallet uses for an on-device full node. */
+    const val LOCAL_NODE_HOST = "127.0.0.1"
+
+    /**
+     * Default local RPC port. Matches the :48081 BitMonero nodes in
+     * [DEFAULT_NODES] so a user who already ran their own node on the
+     * standard port connects without reconfiguring.
+     */
+    const val DEFAULT_LOCAL_RPC_PORT = 48081
 
     private val DEFAULT_NODES = setOf(
         "127.0.0.1:48081",
@@ -85,4 +114,57 @@ object NodeStore {
         val port = parts[1].toIntOrNull() ?: return false
         return parts[0].isNotBlank() && port in 1..65535
     }
+
+    // --- Node mode (remote vs. on-device full node) -------------------------
+
+    /** Defaults to [NodeMode.REMOTE] -- existing wallets keep their behaviour. */
+    fun mode(context: Context): NodeMode =
+        when (prefs(context).getString(KEY_MODE, null)) {
+            NodeMode.FULL_NODE.name -> NodeMode.FULL_NODE
+            else -> NodeMode.REMOTE
+        }
+
+    fun setMode(context: Context, mode: NodeMode) {
+        prefs(context).edit().putString(KEY_MODE, mode.name).apply()
+    }
+
+    fun localRpcPort(context: Context): Int =
+        prefs(context).getInt(KEY_LOCAL_PORT, DEFAULT_LOCAL_RPC_PORT)
+
+    /** Returns false (and stores nothing) for an out-of-range port. */
+    fun setLocalRpcPort(context: Context, port: Int): Boolean {
+        if (port !in 1..65535) return false
+        prefs(context).edit().putInt(KEY_LOCAL_PORT, port).apply()
+        return true
+    }
+
+    /**
+     * Whether the on-device node prunes the blockchain. Defaults to true:
+     * a pruned node needs roughly a third of the storage (tens of GB rather
+     * than hundreds) and is still a full-validation node -- the only sane
+     * default on a phone.
+     */
+    fun pruned(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_PRUNED, true)
+
+    fun setPruned(context: Context, pruned: Boolean) {
+        prefs(context).edit().putBoolean(KEY_PRUNED, pruned).apply()
+    }
+
+    /** host:port the wallet uses when talking to the on-device full node. */
+    fun localNodeAddress(context: Context): String =
+        "$LOCAL_NODE_HOST:${localRpcPort(context)}"
+
+    /**
+     * The daemon address the wallet should connect to given the current
+     * mode, and whether to treat it as trusted. A local node is always
+     * trusted (it's ours); remote nodes are treated as trusted here to
+     * preserve the pre-existing behaviour (MainActivity already passed
+     * trusted = true for the selected node).
+     */
+    fun resolvedDaemonAddress(context: Context): String =
+        when (mode(context)) {
+            NodeMode.FULL_NODE -> localNodeAddress(context)
+            NodeMode.REMOTE -> active(context)
+        }
 }

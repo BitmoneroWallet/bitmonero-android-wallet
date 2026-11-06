@@ -11,6 +11,16 @@
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
+    <!-- Full-node mode: the embedded monerod runs in a foreground service so
+         an initial sync (hours) survives the app being backgrounded. WAKE_LOCK
+         keeps the CPU alive while syncing; POST_NOTIFICATIONS is needed on
+         Android 13+ to show the ongoing-node notification. All only matter
+         when the user turns on full-node mode and the node engine is bundled. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:label="BitMonero Wallet"
         android:icon="@mipmap/ic_launcher"
@@ -38,6 +48,14 @@
             android:screenOrientation="portrait"
             android:exported="false"
             tools:replace="screenOrientation" />
+
+        <!-- Runs the on-device BitMonero full node while full-node mode is on.
+             dataSync foreground type = a long-running data transfer (the
+             blockchain sync). Not exported: only this app starts it. -->
+        <service
+            android:name=".FullNodeService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
         <!-- Lets the Backup screen share the wallet's own two files (cache
              and keys) via a content:// URI without making them world-readable;

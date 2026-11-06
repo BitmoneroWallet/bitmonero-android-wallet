@@ -25,6 +25,20 @@ fun SettingsScreen(session: WalletSession, onBack: () -> Unit, onBackup: () -> U
     var newNode by remember { mutableStateOf("") }
     var nodeError by remember { mutableStateOf<String?>(null) }
     var rescanRequested by remember { mutableStateOf(false) }
+    var nodeMode by remember { mutableStateOf(NodeStore.mode(context)) }
+    var localPort by remember { mutableStateOf(NodeStore.localRpcPort(context).toString()) }
+    var pruned by remember { mutableStateOf(NodeStore.pruned(context)) }
+    var nodeStatus by remember { mutableStateOf(FullNodeController.status(context)) }
+    val fullNodeSupported = remember { FullNodeController.isSupported }
+
+    // While the on-device node is selected, poll its sync progress for the
+    // status line below.
+    LaunchedEffect(nodeMode) {
+        while (nodeMode == NodeMode.FULL_NODE && fullNodeSupported) {
+            nodeStatus = FullNodeController.status(context)
+            kotlinx.coroutines.delay(2000)
+        }
+    }
 
     val biometricSupported = remember {
         BiometricManager.from(context).canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
@@ -115,10 +129,102 @@ fun SettingsScreen(session: WalletSession, onBack: () -> Unit, onBackup: () -> U
         }
 
         Spacer(Modifier.height(32.dp))
-        Text("Nodes", style = MaterialTheme.typography.titleMedium)
+        Text("Node mode", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(4.dp))
         Text(
-            "The wallet connects to whichever node is selected. No third-party node is built in by default -- only your own (127.0.0.1) until you add one.",
+            "Choose how the wallet reaches the network. A remote node is fast and light but learns which transactions you query. Running a full node on this device is the most private option -- nothing about your wallet leaves the phone -- but it downloads and validates the blockchain (tens of GB, significant battery and data).",
+            style = MaterialTheme.typography.bodySmall
+        )
+        Spacer(Modifier.height(8.dp))
+
+        fun selectMode(mode: NodeMode) {
+            if (mode == nodeMode) return
+            nodeMode = mode
+            NodeStore.setMode(context, mode)
+            runCatching { NodeConnector.applyModeChange(context, session) }
+            nodeStatus = FullNodeController.status(context)
+        }
+
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            RadioButton(selected = nodeMode == NodeMode.REMOTE, onClick = { selectMode(NodeMode.REMOTE) })
+            Text("Remote node")
+        }
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            RadioButton(selected = nodeMode == NodeMode.FULL_NODE, onClick = { selectMode(NodeMode.FULL_NODE) })
+            Column {
+                Text("Run a full node on this device")
+                Text(
+                    "Maximum privacy. Uses storage, battery and data.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+
+        if (nodeMode == NodeMode.FULL_NODE) {
+            Spacer(Modifier.height(8.dp))
+            if (!fullNodeSupported) {
+                Text(
+                    "This build does not include the full-node engine, so no node will actually run. The wallet will try to reach a node on 127.0.0.1:${localPort} -- it stays disconnected unless you run one yourself. Install a build that bundles the node engine to use this mode fully.",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            } else {
+                val st = nodeStatus
+                val line = when {
+                    !st.running -> "Node stopped"
+                    st.targetHeight > 0L && st.height < st.targetHeight ->
+                        "Syncing: ${st.height} / ${st.targetHeight}"
+                    st.running -> "Node running -- height ${st.height}"
+                    else -> st.message
+                }
+                Text(line, style = MaterialTheme.typography.bodySmall)
+            }
+
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                Switch(
+                    checked = pruned,
+                    onCheckedChange = {
+                        pruned = it
+                        NodeStore.setPruned(context, it)
+                    }
+                )
+                Spacer(Modifier.width(8.dp))
+                Column {
+                    Text("Pruned blockchain")
+                    Text(
+                        "Keeps about a third of the data and still fully validates. Recommended on a phone. Takes effect next time the node starts.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(8.dp))
+            OutlinedTextField(
+                value = localPort,
+                onValueChange = { localPort = it.filter(Char::isDigit).take(5) },
+                label = { Text("Local RPC port") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(4.dp))
+            TextButton(onClick = {
+                val p = localPort.toIntOrNull()
+                if (p != null && NodeStore.setLocalRpcPort(context, p)) {
+                    nodeError = null
+                    runCatching { NodeConnector.applyModeChange(context, session) }
+                } else {
+                    nodeError = "Port must be 1-65535"
+                }
+            }) { Text("Apply port") }
+        }
+
+        Spacer(Modifier.height(32.dp))
+        Text("Remote nodes", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(4.dp))
+        Text(
+            "The wallet connects to whichever node is selected (used in Remote node mode). No third-party node is built in by default -- only your own (127.0.0.1) until you add one.",
             style = MaterialTheme.typography.bodySmall
         )
         Spacer(Modifier.height(12.dp))

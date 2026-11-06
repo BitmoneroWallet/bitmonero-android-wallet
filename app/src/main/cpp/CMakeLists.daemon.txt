@@ -1,0 +1,51 @@
+# Optional build for the embedded full-node JNI library
+# (libbitmonero_daemon_jni.so). NOT part of the default android build -- the
+# default CMakeLists.txt builds only the wallet JNI lib, which is all a
+# remote-node wallet needs.
+#
+# Build this separately (per ABI, against the contrib/depends toolchain, the
+# same way the wallet lib is built), then copy the resulting .so plus its
+# runtime deps into app/src/main/jniLibs/<abi>/. At that point
+# NativeDaemon.isAvailable flips to true and the in-app "Run a full node"
+# option becomes fully functional with no Kotlin changes.
+#
+# Usage (standalone, not add_subdirectory'd by Gradle):
+#   cmake -S . -B build-daemon-arm64 \
+#     -DCMAKE_TOOLCHAIN_FILE=<depends>/toolchain.cmake \
+#     -DBITMONERO_ROOT=../../../../../src \
+#     -C CMakeLists.daemon.txt ...
+#
+# NOTE ON RANDOMX/LLD: unlike the wallet lib, a full node MUST retain the PoW
+# validation path (get_block_longhash -> RandomX). That is the code whose
+# AArch64 JIT assembly hits LLD's CONDBR19 thunk-range limitation. Resolve it
+# head-on here -- e.g. disable RandomX's JIT on arm64 (RANDOMX_FLAG_JIT off;
+# interpreter is slower but links) or apply the upstream LLD thunk workaround.
+# The wallet lib's --gc-sections trick does NOT apply, because here the PoW
+# path is reachable and must stay.
+
+cmake_minimum_required(VERSION 3.10)
+project(bitmonero_daemon_jni)
+
+set(BITMONERO_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../src"
+    CACHE PATH "Path to the BitMonero source tree")
+
+set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(STATIC ON CACHE BOOL "" FORCE)
+
+add_subdirectory(${BITMONERO_ROOT} bitmonero_daemon_build)
+
+add_library(bitmonero_daemon_jni SHARED
+    bitmonero_daemon_jni.cpp)
+
+target_include_directories(bitmonero_daemon_jni PRIVATE
+    ${BITMONERO_ROOT}/src
+    ${BITMONERO_ROOT}/contrib/epee/include)
+
+# Link the node targets. Exact target names follow the BitMonero/Monero tree:
+#   cryptonote_core  p2p  rpc  cryptonote_protocol  daemonizer  (+ deps)
+target_link_libraries(bitmonero_daemon_jni PRIVATE
+    cryptonote_core
+    p2p
+    rpc
+    cryptonote_protocol
+    log)
