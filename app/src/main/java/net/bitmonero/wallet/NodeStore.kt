@@ -57,18 +57,22 @@ object NodeStore {
     const val DEFAULT_LOCAL_RPC_PORT = 48081
 
     private val DEFAULT_NODES = setOf(
-        "43.230.201.59:48080",   // nestex.one public BMR node
-        "127.0.0.1:48081",
+        "bmr.rpc.wattxchange.app:80",  // self-hosted node, Cloudflare -> restricted RPC (48083)
+        "127.0.0.1:48081",             // your own node, if running locally on-device
         "178.128.25.34:48081",
         "51.38.236.156:48082",
         "136.248.244.92:48080",
         "69.42.222.20:20015"
     )
 
-    // Default to the nestex.one public node: a known BMR node, so a fresh
-    // install connects out of the box without the user having to pick or add
-    // one. (Previously 178.128.25.34, which is not reliably reachable.)
-    private const val DEFAULT_ACTIVE = "43.230.201.59:48080"
+    // Default to the self-hosted, Cloudflare-fronted RPC node so a fresh
+    // install connects out of the box. It is plain HTTP on :80 -- Cloudflare
+    // proxies to the node's restricted RPC (48083), and the wallet permits
+    // cleartext (network_security_config.xml), so no in-app TLS is needed.
+    //
+    // NOTE: 43.230.201.59:48080 (nestex) was removed -- that is a P2P/levin
+    // port, not an HTTP RPC port, so a wallet can never sync from it.
+    private const val DEFAULT_ACTIVE = "bmr.rpc.wattxchange.app:80"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
