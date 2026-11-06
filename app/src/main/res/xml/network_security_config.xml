@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- No cleartext by default. If the user points the wallet at their own
+     LAN node (plain http, no TLS available on monerod's RPC), they must
+     explicitly opt in per-domain rather than the app allowing cleartext
+     globally, keeping a future "just add a remote node URL" feature from
+     silently downgrading everyone's traffic. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <!-- Loopback only, for the bundled-full-node case (monerod RPC has no
+         TLS). A strict global false would also block 127.0.0.1 on API 28+,
+         which would break the local-node path entirely. -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>

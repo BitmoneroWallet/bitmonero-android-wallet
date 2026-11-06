@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- White matches the margin already baked into the source mark
+         (bitmonero-gui's appicon.icns), so the adaptive icon's background
+         layer reads as a continuation of it rather than a mismatched color. -->
+    <color name="ic_launcher_background">#FFFFFF</color>
+</resources>

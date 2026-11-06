@@ -1,0 +1,26 @@
+# Android / Gradle
+.gradle/
+build/
+app/build/
+local.properties
+*.iml
+.idea/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Native build output (regenerable via CMake/NDK)
+app/src/main/cpp/build-arm64/
+app/src/main/cpp/build-x86_64/
+
+# Prebuilt native libraries (large; built from Monero core)
+app/src/main/jniLibs/
+
+# Keystores / secrets
+*.jks
+*.keystore
+keystore.properties
+
+# Release artifacts (distributed via GitHub Releases)
+*.apk
+*.aab

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Exposes only files/wallets/ (where WalletSession puts the wallet cache
+     and keys files) through the FileProvider content:// URI; nothing else
+     in app-private storage is ever made shareable this way. -->
+<paths>
+    <files-path name="wallets" path="wallets/" />
+</paths>
