@@ -1,49 +1,58 @@
 package net.bitmonero.wallet
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-// Sampled directly from the app's own logo mark (bmr_mark_clean.png,
-// extracted from bitmonero-gui's appicon.icns) rather than guessed --
-// #F0631C is its orange, #4E4E4E its dark grey.
-private val BitMoneroOrange = Color(0xFFF0631C)
-private val LogoGrey = Color(0xFF4E4E4E)
+// BitMonero brand. Orange sampled from the app's own logo mark
+// (bmr_mark_clean.png from bitmonero-gui's appicon.icns) -- #F0631C.
+// The surrounding palette mirrors the WATTx wallet's layered dark look
+// (near-black canvas, raised cards) but tinted graphite/charcoal to match
+// BitMonero rather than WATTx navy.
+val BmrOrange = Color(0xFFF0631C)
+val BmrOrangeDark = Color(0xFFC94E10)
 
-private val DarkColors = darkColorScheme(
-    primary = BitMoneroOrange,
+/**
+ * Extra brand colors the Material scheme doesn't have slots for (card
+ * backgrounds, dimmed text, status greens). Screens read these directly so
+ * the whole app shares one palette.
+ */
+object Brand {
+    val canvas = Color(0xFF0E0F13)       // app background (near-black)
+    val card = Color(0xFF1A1C22)         // raised card surface
+    val cardAlt = Color(0xFF232630)      // nested / chip surface
+    val line = Color(0xFF2C2F3A)         // hairline borders/dividers
+    val text = Color(0xFFF4F5F7)         // primary text
+    val textDim = Color(0xFF9BA0AE)      // secondary text
+    val orange = BmrOrange
+    val green = Color(0xFF3DDC84)        // connected / success
+    val red = Color(0xFFFF6E5A)          // error / disconnected
+    val amber = Color(0xFFFFC24B)        // syncing / warning
+}
+
+private val BmrDarkColors = darkColorScheme(
+    primary = BmrOrange,
     onPrimary = Color.White,
-    secondary = LogoGrey,
+    secondary = BmrOrangeDark,
     onSecondary = Color.White,
-    background = Color(0xFF1F1F1F), // dark grey, darkened from the logo's #4E4E4E for actual readable contrast
-    onBackground = Color(0xFFECECEC),
-    surface = Color(0xFF2A2A2A),
-    onSurface = Color(0xFFECECEC),
-    surfaceVariant = LogoGrey,
-    error = Color(0xFFFF6E5A)
+    background = Brand.canvas,
+    onBackground = Brand.text,
+    surface = Brand.card,
+    onSurface = Brand.text,
+    surfaceVariant = Brand.cardAlt,
+    onSurfaceVariant = Brand.textDim,
+    outline = Brand.line,
+    error = Brand.red,
+    onError = Color.White,
 )
 
-private val LightColors = lightColorScheme(
-    primary = BitMoneroOrange,
-    onPrimary = Color.White,
-    secondary = LogoGrey,
-    onSecondary = Color.White,
-    background = Color(0xFFFFFBFA),
-    onBackground = Color(0xFF201A17),
-    surface = Color(0xFFFFFFFF),
-    onSurface = Color(0xFF201A17),
-    surfaceVariant = Color(0xFFF0E5E0),
-    error = Color(0xFFBA1A1A)
-)
-
-/** Follows the system light/dark setting -- no in-app toggle requested, so this is the whole story. */
+/**
+ * Always dark -- like the WATTx wallet, the app ships a single intentional
+ * dark theme rather than following the system light/dark toggle (a half-lit
+ * wallet looked unfinished).
+ */
 @Composable
 fun BitMoneroTheme(content: @Composable () -> Unit) {
-    MaterialTheme(
-        colorScheme = if (isSystemInDarkTheme()) DarkColors else LightColors,
-        content = content
-    )
+    MaterialTheme(colorScheme = BmrDarkColors, content = content)
 }

@@ -1,4 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.BitMoneroWallet" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Dark base so the window/splash background matches the always-dark
+         Compose UI (the old Light base flashed white before Compose drew).
+         windowBackground is the Compose canvas color (Brand.canvas). -->
+    <style name="Theme.BitMoneroWallet" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/bmr_canvas</item>
+        <item name="android:statusBarColor">@color/bmr_canvas</item>
+        <item name="android:navigationBarColor">@color/bmr_card</item>
+    </style>
 </resources>

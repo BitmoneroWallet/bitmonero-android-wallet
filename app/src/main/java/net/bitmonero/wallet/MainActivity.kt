@@ -3,16 +3,30 @@ package net.bitmonero.wallet
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.fragment.app.FragmentActivity
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -25,11 +39,9 @@ sealed interface Screen {
     data class ShowSeed(val seed: String) : Screen
     data class ConfirmSeed(val seed: String) : Screen
     data class RestoreEntry(val error: String? = null) : Screen
-    data object Home : Screen
-    data object Settings : Screen
+    /** The signed-in app shell with bottom tabs: 0=Wallet, 1=Send, 2=Receive, 3=Settings. */
+    data class Main(val tab: Int = 0) : Screen
     data object Backup : Screen
-    data object Send : Screen
-    data object Receive : Screen
     data class Error(val message: String) : Screen
 }
 
@@ -49,7 +61,7 @@ class MainActivity : FragmentActivity() {
             return session.open(WALLET_NAME, password).fold(
                 onSuccess = {
                     NodeConnector.connect(this, session)
-                    Screen.Home
+                    Screen.Main()
                 },
                 onFailure = { e -> Screen.Error(e.message ?: "failed to open wallet") }
             )
@@ -110,7 +122,7 @@ class MainActivity : FragmentActivity() {
                                     onSuccess = {
                                         WalletCredentialStore.savePassword(this@MainActivity, WALLET_NAME, pendingCreatePassword)
                                         NodeConnector.connect(this@MainActivity, session)
-                                        screen = Screen.Home
+                                        screen = Screen.Main()
                                     },
                                     onFailure = { e -> screen = Screen.Error(e.message ?: "commit failed") }
                                 )
@@ -129,7 +141,7 @@ class MainActivity : FragmentActivity() {
                                         onSuccess = {
                                             WalletCredentialStore.savePassword(this@MainActivity, WALLET_NAME, password)
                                             NodeConnector.connect(this@MainActivity, session)
-                                            screen = Screen.Home
+                                            screen = Screen.Main()
                                         },
                                         onFailure = { e -> screen = Screen.RestoreEntry(e.message) }
                                     )
@@ -138,34 +150,16 @@ class MainActivity : FragmentActivity() {
                             onBack = { screen = Screen.Welcome }
                         )
 
-                        is Screen.Home -> HomeScreen(
+                        is Screen.Main -> MainScaffold(
                             session = session,
-                            onSend = { screen = Screen.Send },
-                            onReceive = { screen = Screen.Receive },
-                            onSettings = { screen = Screen.Settings }
-                        )
-
-                        is Screen.Send -> SendScreen(
-                            session = session,
-                            onDone = { screen = Screen.Home },
-                            onBack = { screen = Screen.Home }
-                        )
-
-                        is Screen.Receive -> ReceiveScreen(
-                            session = session,
-                            onBack = { screen = Screen.Home }
-                        )
-
-                        is Screen.Settings -> SettingsScreen(
-                            session = session,
-                            onBack = { screen = Screen.Home },
+                            startTab = s.tab,
                             onBackup = { screen = Screen.Backup }
                         )
 
                         is Screen.Backup -> BackupScreen(
                             session = session,
                             activity = this@MainActivity,
-                            onBack = { screen = Screen.Settings }
+                            onBack = { screen = Screen.Main(3) }
                         )
 
                         is Screen.Error -> ErrorScreen(s.message) { screen = Screen.Welcome }
@@ -183,8 +177,14 @@ fun WelcomeScreen(onCreate: () -> Unit, onRestore: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text("BitMonero Wallet", style = MaterialTheme.typography.headlineMedium)
-        Spacer(Modifier.height(32.dp))
+        Image(
+            painter = painterResource(R.mipmap.ic_launcher_foreground),
+            contentDescription = null,
+            modifier = Modifier.size(120.dp)
+        )
+        Text("BitMonero", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
+        Text("Private. Yours.", style = MaterialTheme.typography.bodyMedium, color = Brand.textDim)
+        Spacer(Modifier.height(40.dp))
         Button(onClick = onCreate, modifier = Modifier.fillMaxWidth()) { Text("Create new wallet") }
         Spacer(Modifier.height(12.dp))
         OutlinedButton(onClick = onRestore, modifier = Modifier.fillMaxWidth()) { Text("Restore from seed") }
@@ -402,63 +402,160 @@ fun RestoreScreen(error: String?, onRestore: (seed: String, password: String, he
     }
 }
 
+/**
+ * Signed-in app shell: a top bar with the BitMonero mark, a bottom tab bar
+ * (Wallet / Send / Receive / Settings), and the selected tab's content.
+ * Modeled on the WATTx wallet's bottom-tab layout, minus the staking and
+ * other non-Monero tabs.
+ */
 @Composable
-fun HomeScreen(session: WalletSession, onSend: () -> Unit, onReceive: () -> Unit, onSettings: () -> Unit) {
+fun MainScaffold(session: WalletSession, startTab: Int, onBackup: () -> Unit) {
+    var tab by rememberSaveable { mutableStateOf(startTab) }
+    // (label, glyph) per tab.
+    val tabs = listOf("Wallet" to "👛", "Send" to "↗", "Receive" to "↙", "Settings" to "⚙")
+
+    Scaffold(
+        containerColor = Brand.canvas,
+        topBar = { BmrTopBar() },
+        bottomBar = {
+            NavigationBar(containerColor = Brand.card, tonalElevation = 0.dp) {
+                tabs.forEachIndexed { i, (label, glyph) ->
+                    NavigationBarItem(
+                        selected = tab == i,
+                        onClick = { tab = i },
+                        icon = { Text(glyph, fontSize = 20.sp) },
+                        label = { Text(label) },
+                        colors = NavigationBarItemDefaults.colors(
+                            selectedIconColor = Brand.orange,
+                            selectedTextColor = Brand.orange,
+                            indicatorColor = Brand.cardAlt,
+                            unselectedIconColor = Brand.textDim,
+                            unselectedTextColor = Brand.textDim,
+                        )
+                    )
+                }
+            }
+        }
+    ) { pad ->
+        Box(Modifier.padding(pad).fillMaxSize()) {
+            when (tab) {
+                0 -> WalletTab(session, onSend = { tab = 1 }, onReceive = { tab = 2 })
+                1 -> SendScreen(session, onDone = { tab = 0 }, onBack = { tab = 0 })
+                2 -> ReceiveScreen(session, onBack = { tab = 0 })
+                else -> SettingsScreen(session, onBack = { tab = 0 }, onBackup = onBackup)
+            }
+        }
+    }
+}
+
+@Composable
+private fun BmrTopBar() {
+    Row(
+        modifier = Modifier.fillMaxWidth().background(Brand.canvas)
+            .padding(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Image(
+            painter = painterResource(R.mipmap.ic_launcher_foreground),
+            contentDescription = null,
+            modifier = Modifier.size(40.dp)
+        )
+        Text("BitMonero", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+    }
+}
+
+/** Rounded, outlined dark card used throughout the redesigned screens. */
+@Composable
+fun BrandCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(Brand.card)
+            .border(1.dp, Brand.line, RoundedCornerShape(16.dp))
+            .padding(18.dp),
+        content = content
+    )
+}
+
+@Composable
+fun WalletTab(session: WalletSession, onSend: () -> Unit, onReceive: () -> Unit) {
     var address by remember { mutableStateOf("") }
     var balance by remember { mutableStateOf(0L) }
+    var unlocked by remember { mutableStateOf(0L) }
     var synced by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<WalletSession.SyncStatus?>(null) }
 
     LaunchedEffect(Unit) {
         while (true) {
             address = runCatching { session.address() }.getOrDefault("")
-            balance = runCatching { session.unlockedBalanceAtomic() }.getOrDefault(0L)
+            balance = runCatching { session.balanceAtomic() }.getOrDefault(0L)
+            unlocked = runCatching { session.unlockedBalanceAtomic() }.getOrDefault(0L)
             synced = runCatching { session.isSynchronized() }.getOrDefault(false)
             status = runCatching { session.syncStatus() }.getOrNull()
             kotlinx.coroutines.delay(2000)
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)) {
+        // Balance hero card (orange gradient)
+        Column(
+            Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))
+                .background(Brush.linearGradient(listOf(BmrOrange, BmrOrangeDark)))
+                .padding(24.dp)
         ) {
-            Text("BitMonero Wallet", style = MaterialTheme.typography.titleLarge)
-            IconButton(onClick = onSettings) {
-                Text("⚙")  // gear glyph -- avoids pulling in the full Material Icons artifact for one icon
+            Text("Total balance", color = Color.White.copy(alpha = .85f), style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(6.dp))
+            Text(
+                formatAtomicUnits(unlocked),
+                color = Color.White,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold
+            )
+            if (balance != unlocked) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    "Locked: ${formatAtomicUnits(balance - unlocked)}",
+                    color = Color.White.copy(alpha = .85f),
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
         }
-        Spacer(Modifier.height(16.dp))
-        Text("Balance", style = MaterialTheme.typography.titleMedium)
-        Text(formatAtomicUnits(balance), style = MaterialTheme.typography.headlineLarge)
-        Spacer(Modifier.height(8.dp))
-        SyncStatusLine(synced = synced, status = status)
-        Spacer(Modifier.height(24.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+
+        Spacer(Modifier.height(14.dp))
+        StatusPill(synced = synced, status = status)
+
+        Spacer(Modifier.height(18.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
             Button(onClick = onSend, modifier = Modifier.weight(1f)) { Text("Send") }
-            Button(onClick = onReceive, modifier = Modifier.weight(1f)) { Text("Receive") }
+            OutlinedButton(onClick = onReceive, modifier = Modifier.weight(1f)) { Text("Receive") }
         }
-        Spacer(Modifier.height(24.dp))
-        Text("Receive address", style = MaterialTheme.typography.titleMedium)
-        SelectionContainerText(address)
+
+        Spacer(Modifier.height(18.dp))
+        BrandCard(Modifier.fillMaxWidth()) {
+            Text("Your primary address", color = Brand.textDim, style = MaterialTheme.typography.labelLarge)
+            Spacer(Modifier.height(8.dp))
+            SelectionContainerText(address.ifBlank { "…" })
+        }
     }
 }
 
+/** Small colored-dot + text connection/sync indicator. */
 @Composable
-fun SyncStatusLine(synced: Boolean, status: WalletSession.SyncStatus?) {
-    val text = when {
-        status == null -> "Connecting…"
+fun StatusPill(synced: Boolean, status: WalletSession.SyncStatus?) {
+    val (dot, text) = when {
+        status == null -> Brand.amber to "Connecting…"
         status.connection == WalletSession.ConnectionState.DISCONNECTED ->
-            "Not connected to a node -- check Settings > Nodes (is the selected node reachable?)"
+            Brand.red to "Not connected — check Settings ▸ Nodes"
         status.connection == WalletSession.ConnectionState.WRONG_VERSION ->
-            "Connected, but this node's RPC version doesn't match -- try a different node"
-        synced -> "Synchronized -- height ${status.walletHeight}"
-        else -> "Syncing: ${status.walletHeight} / ${status.daemonHeight}"
+            Brand.red to "Node RPC version mismatch — try another node"
+        synced -> Brand.green to "Synchronized · height ${status.walletHeight}"
+        else -> Brand.amber to "Syncing ${status.walletHeight} / ${status.daemonHeight}"
     }
-    val isProblem = status?.connection != WalletSession.ConnectionState.CONNECTED
-    Text(text, color = if (isProblem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(9.dp).clip(CircleShape).background(dot))
+        Spacer(Modifier.width(8.dp))
+        Text(text, color = Brand.textDim, style = MaterialTheme.typography.bodySmall)
+    }
 }
 
 @Composable

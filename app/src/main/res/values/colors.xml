@@ -4,4 +4,7 @@
          (bitmonero-gui's appicon.icns), so the adaptive icon's background
          layer reads as a continuation of it rather than a mismatched color. -->
     <color name="ic_launcher_background">#FFFFFF</color>
+    <!-- Mirror Brand.canvas / Brand.card from Theme.kt for the window chrome. -->
+    <color name="bmr_canvas">#0E0F13</color>
+    <color name="bmr_card">#1A1C22</color>
 </resources>
